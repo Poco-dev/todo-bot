@@ -65,26 +65,29 @@ const UserSession = mongoose.model("UserSession", userSessionSchema);
 // Бот
 const bot = new Telegraf(BOT_TOKEN);
 
-// Команда /start
+// В команде /start и везде где создается personalUrl
 bot.start((ctx) => {
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name;
-  // Добавляем username в URL
-  const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}`;
   
-  const message = `📝 Добро пожаловать в ваш персональный Todo List, ${ctx.from.first_name}!\n\n` +
-    `Нажмите на кнопку ниже чтобы открыть ваш список задач:`;
-
-  ctx.reply(message, {
+  // Добавляем параметры для полноэкранного режима
+  const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}&tgWebAppPlatform=tdesktop&tgWebAppVersion=7.0&tgWebAppThemeParams=%7B%7D`;
+  
+  ctx.reply(`📝 Добро пожаловать, ${username}!`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "📋 Открыть Мой Todo List", web_app: { url: personalUrl } }]
+        [{ 
+          text: "📋 Открыть Мой Todo List", 
+          web_app: { 
+            url: personalUrl 
+          } 
+        }]
       ]
     }
   });
 });
 
-// Обработка сообщений
+// В обработке сообщений тоже обнови URL
 bot.on("text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
@@ -94,15 +97,21 @@ bot.on("text", async (ctx) => {
       task: text,
       userId: ctx.from.id,
       username: ctx.from.username || ctx.from.first_name,
-      chatId: ctx.chat.id,
     });
     await task.save();
 
-    const personalUrl = `${WEB_APP_URL}?userId=${ctx.from.id}`;
-    ctx.reply(`✅ Задача "${text}" добавлена в ваш список!\n\nОткройте приложение чтобы увидеть все ваши задачи:`, {
+    const username = ctx.from.username || ctx.from.first_name;
+    const personalUrl = `${WEB_APP_URL}?userId=${ctx.from.id}&username=${encodeURIComponent(username)}&tgWebAppPlatform=tdesktop&tgWebAppVersion=7.0&tgWebAppThemeParams=%7B%7D`;
+    
+    ctx.reply(`✅ Задача добавлена, ${username}!`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "📋 Открыть Мой Todo List", web_app: { url: personalUrl } }]
+          [{ 
+            text: "📋 Открыть Мой Todo List", 
+            web_app: { 
+              url: personalUrl 
+            } 
+          }]
         ]
       }
     });
@@ -185,10 +194,14 @@ app.get("/api/tasks", async (req, res) => {
 
 app.post("/api/tasks", async (req, res) => {
   try {
-    const { task, userId } = req.body;
+    const { task, userId, username } = req.body;
     if (!userId) return res.status(400).json({ error: "userId required" });
 
-    const newTask = new Task({ task, userId });
+    const newTask = new Task({ 
+      task, 
+      userId,
+      username: username || "user" // Сохраняем username
+    });
     await newTask.save();
     res.json(newTask);
   } catch (error) {

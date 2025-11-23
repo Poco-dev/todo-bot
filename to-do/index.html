@@ -3,23 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="format-detection" content="telephone=no">
     <title>Мой Todo List</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        input, textarea, select {
-            font-size: 16px !important;
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
         }
         
-        body {
+        #app {
+            height: 100%;
+        }
+        
+        .full-height {
+            height: 100vh;
+            height: 100dvh;
+        }
+        
+        body.telegram-webapp {
             -webkit-overflow-scrolling: touch;
             overflow: hidden;
         }
         
-        .container-height {
-            height: 100dvh;
-            max-height: -webkit-fill-available;
+        input, textarea, select {
+            font-size: 16px !important;
         }
         
         .safe-area-inset-bottom {
@@ -44,7 +57,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body>
     <div id="app"></div>
 
     <script>
@@ -64,14 +77,41 @@
                         totalTasks: 0,
                         completedTasks: 0,
                         pendingTasks: 0
-                    }
+                    },
+                    isTelegramWebApp: false
                 }
             },
             async mounted() {
-                const urlParams = new URLSearchParams(window.location.search);
-                this.userId = urlParams.get('userId');
-                this.userName = urlParams.get('username') || 'Пользователь';
-
+                // Проверяем если мы в Telegram Web App
+                if (window.Telegram && Telegram.WebApp) {
+                    this.isTelegramWebApp = true;
+                    console.log('📱 Telegram Web App detected');
+                    
+                    // Расширяем на весь экран
+                    Telegram.WebApp.expand();
+                    
+                    // Отключаем перетаскивание для закрытия
+                    Telegram.WebApp.disableVerticalSwipes();
+                    
+                    // Устанавливаем тему
+                    Telegram.WebApp.setHeaderColor('#ffffff');
+                    Telegram.WebApp.setBackgroundColor('#f8fafc');
+                    
+                    // Получаем данные пользователя из Telegram
+                    const user = Telegram.WebApp.initDataUnsafe.user;
+                    if (user) {
+                        this.userId = user.id;
+                        this.userName = user.username || user.first_name || 'Пользователь';
+                        console.log('👤 User from Telegram:', this.userName);
+                    }
+                } else {
+                    console.log('🌐 Regular browser mode');
+                    // Если не в Web App, берем из URL параметров
+                    const urlParams = new URLSearchParams(window.location.search);
+                    this.userId = urlParams.get('userId');
+                    this.userName = urlParams.get('username') || 'Пользователь';
+                }
+                
                 if (this.userId) {
                     await this.authenticateUser();
                     await this.fetchUserStats();
@@ -107,7 +147,10 @@
                         
                         if (userData.authenticated) {
                             this.apiStatus = '✅ Авторизован';
-                            this.userName = `Пользователь ${this.userId}`;
+                            // Используем имя из Telegram или из базы данных
+                            if (userData.firstName) {
+                                this.userName = userData.firstName;
+                            }
                         }
                     } catch (error) {
                         console.error('Auth error:', error);
@@ -150,7 +193,9 @@
                             },
                             body: JSON.stringify({ 
                                 task: this.newTask.trim(),
-                                userId: this.userId 
+                                userId: this.userId,
+                                username: this.userName,
+                                firstName: this.userName
                             }),
                         });
                         
@@ -212,7 +257,7 @@
                 }
             },
             template: `
-                <div class="container-height flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+                <div class="full-height flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100" :class="{'telegram-webapp': isTelegramWebApp}">
                     <!-- Хедер - фиксированный -->
                     <div class="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200/50 p-4 shadow-sm">
                         <div class="flex items-center space-x-3">
@@ -221,7 +266,7 @@
                             </div>
                             <div class="flex-1 min-w-0">
                                 <h1 class="text-2xl font-bold text-gray-800 truncate">Мой Todo List</h1>
-                                <p class="text-gray-600 text-sm">@{{ userName }}</p>
+                                <p class="text-gray-600 text-sm">{{ userName }}</p>
                             </div>
                         </div>
                     </div>
