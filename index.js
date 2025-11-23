@@ -70,8 +70,8 @@ bot.start((ctx) => {
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name;
   
-  // Добавляем параметры для полноэкранного режима
-  const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}&tgWebAppPlatform=tdesktop&tgWebAppVersion=7.0&tgWebAppThemeParams=%7B%7D`;
+  // Используем прямой путь без параметров кеширования
+  const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}&r=${Date.now()}`;
   
   ctx.reply(`📝 Добро пожаловать, ${username}!`, {
     reply_markup: {
@@ -256,11 +256,26 @@ app.get("/api/status", (req, res) => {
   });
 });
 
-// Статические файлы
-app.use(express.static(path.join(__dirname, "to-do")));
+// Отключаем кеширование для HTML файлов
+app.use("/", (req, res, next) => {
+  if (req.path.endsWith('.html') || req.path === '/') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
 
-// Все остальные запросы
+// Статические файлы из папки to-do
+app.use(express.static(path.join(__dirname, "to-do"), {
+  etag: false, // Отключаем ETag
+  lastModified: false, // Отключаем Last-Modified
+  cacheControl: false // Отключаем Cache-Control по умолчанию
+}));
+
+// Все остальные запросы отправляем в index.html
 app.get("/", (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, "to-do", "index.html"));
 });
 
