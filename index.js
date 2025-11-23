@@ -68,7 +68,9 @@ const bot = new Telegraf(BOT_TOKEN);
 // Команда /start
 bot.start((ctx) => {
   const userId = ctx.from.id;
-  const personalUrl = `${WEB_APP_URL}?userId=${userId}`;
+  const username = ctx.from.username || ctx.from.first_name;
+  // Добавляем username в URL
+  const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}`;
   
   const message = `📝 Добро пожаловать в ваш персональный Todo List, ${ctx.from.first_name}!\n\n` +
     `Нажмите на кнопку ниже чтобы открыть ваш список задач:`;

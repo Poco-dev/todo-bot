@@ -70,7 +70,8 @@
             async mounted() {
                 const urlParams = new URLSearchParams(window.location.search);
                 this.userId = urlParams.get('userId');
-                
+                this.userName = urlParams.get('username') || 'Пользователь';
+
                 if (this.userId) {
                     await this.authenticateUser();
                     await this.fetchUserStats();
@@ -220,7 +221,7 @@
                             </div>
                             <div class="flex-1 min-w-0">
                                 <h1 class="text-2xl font-bold text-gray-800 truncate">Мой Todo List</h1>
-                                <p class="text-gray-600 text-sm">ID: {{ userId }}</p>
+                                <p class="text-gray-600 text-sm">ID: {{ userName }}</p>
                             </div>
                         </div>
                     </div>
