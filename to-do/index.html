@@ -3,25 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Todo List Bot</title>
+    <title>Мой Todo List</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Предотвращаем zoom при фокусе на iOS */
         input, textarea, select {
             font-size: 16px !important;
         }
         
-        /* Скрываем скроллбар для веб-приложения */
         body {
             -webkit-overflow-scrolling: touch;
             overflow: hidden;
         }
         
         .container-height {
-            height: 100dvh; /* Используем динамическое viewport height */
-            max-height: -webkit-fill-available; /* Для iOS */
+            height: 100dvh;
+            max-height: -webkit-fill-available;
+        }
+        
+        .safe-area-inset-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
         }
     </style>
 </head>
@@ -37,29 +39,72 @@
                     tasks: [],
                     newTask: '',
                     apiStatus: 'Загрузка...',
-                    apiUrl: '/api'
+                    apiUrl: '/api',
+                    userId: null,
+                    userName: 'Пользователь',
+                    isLoading: true,
+                    userStats: {
+                        totalTasks: 0,
+                        completedTasks: 0,
+                        pendingTasks: 0
+                    }
                 }
             },
             async mounted() {
-                await this.fetchTasks();
-                // Авто-обновление каждые 5 секунд
-                setInterval(this.fetchTasks, 5000);
+                const urlParams = new URLSearchParams(window.location.search);
+                this.userId = urlParams.get('userId');
+                
+                if (this.userId) {
+                    await this.authenticateUser();
+                    await this.fetchUserStats();
+                    await this.fetchTasks();
+                    setInterval(this.fetchTasks, 5000);
+                    setInterval(this.fetchUserStats, 10000);
+                } else {
+                    this.apiStatus = '❌ Не указан пользователь';
+                    this.isLoading = false;
+                }
             },
             computed: {
-                totalTasks() {
-                    return this.tasks.length;
-                },
-                completedTasks() {
-                    return this.tasks.filter(task => task.completed).length;
-                },
-                pendingTasks() {
-                    return this.tasks.filter(task => !task.completed).length;
+                completionPercentage() {
+                    if (this.userStats.totalTasks === 0) return 0;
+                    return Math.round((this.userStats.completedTasks / this.userStats.totalTasks) * 100);
                 }
             },
             methods: {
-                async fetchTasks() {
+                async authenticateUser() {
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks`);
+                        const response = await fetch(`${this.apiUrl}/user?userId=${this.userId}`);
+                        const userData = await response.json();
+                        
+                        if (userData.authenticated) {
+                            this.apiStatus = '✅ Авторизован';
+                            this.userName = `Пользователь ${this.userId}`;
+                        }
+                    } catch (error) {
+                        console.error('Auth error:', error);
+                        this.apiStatus = '❌ Ошибка авторизации';
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                async fetchUserStats() {
+                    if (!this.userId) return;
+                    
+                    try {
+                        const response = await fetch(`${this.apiUrl}/user/stats?userId=${this.userId}`);
+                        this.userStats = await response.json();
+                    } catch (error) {
+                        console.error('Error fetching stats:', error);
+                    }
+                },
+                
+                async fetchTasks() {
+                    if (!this.userId) return;
+                    
+                    try {
+                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`);
                         this.tasks = await response.json();
                     } catch (error) {
                         console.error('Error fetching tasks:', error);
@@ -67,20 +112,24 @@
                 },
                 
                 async addTask() {
-                    if (!this.newTask.trim()) return;
+                    if (!this.newTask.trim() || !this.userId) return;
                     
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks`, {
+                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({ task: this.newTask.trim() }),
+                            body: JSON.stringify({ 
+                                task: this.newTask.trim(),
+                                userId: this.userId 
+                            }),
                         });
                         
                         if (response.ok) {
                             this.newTask = '';
                             await this.fetchTasks();
+                            await this.fetchUserStats();
                         }
                     } catch (error) {
                         console.error('Error adding task:', error);
@@ -89,12 +138,13 @@
                 
                 async deleteTask(task) {
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}`, {
+                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
                             method: 'DELETE',
                         });
                         
                         if (response.ok) {
                             await this.fetchTasks();
+                            await this.fetchUserStats();
                         }
                     } catch (error) {
                         console.error('Error deleting task:', error);
@@ -103,7 +153,7 @@
                 
                 async toggleTask(task) {
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}`, {
+                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -113,6 +163,7 @@
                         
                         if (response.ok) {
                             await this.fetchTasks();
+                            await this.fetchUserStats();
                         }
                     } catch (error) {
                         console.error('Error updating task:', error);
@@ -137,8 +188,8 @@
                                 <i class="fas fa-tasks text-white text-lg"></i>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <h1 class="text-xl font-bold text-gray-800 truncate">Todo List</h1>
-                                <p class="text-gray-600 text-xs">Синхронизация с Telegram</p>
+                                <h1 class="text-xl font-bold text-gray-800 truncate">Мой Todo List</h1>
+                                <p class="text-gray-600 text-xs">ID: {{ userId }}</p>
                             </div>
                         </div>
                     </div>
@@ -146,16 +197,28 @@
                     <!-- Статистика - фиксированная -->
                     <div class="flex-shrink-0 grid grid-cols-3 gap-2 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200">
                         <div class="text-center">
-                            <div class="text-lg font-bold text-blue-600">{{ totalTasks }}</div>
+                            <div class="text-lg font-bold text-blue-600">{{ userStats.totalTasks }}</div>
                             <div class="text-gray-600 text-xs">Всего</div>
                         </div>
                         <div class="text-center">
-                            <div class="text-lg font-bold text-green-600">{{ completedTasks }}</div>
+                            <div class="text-lg font-bold text-green-600">{{ userStats.completedTasks }}</div>
                             <div class="text-gray-600 text-xs">Готово</div>
                         </div>
                         <div class="text-center">
-                            <div class="text-lg font-bold text-orange-600">{{ pendingTasks }}</div>
+                            <div class="text-lg font-bold text-orange-600">{{ userStats.pendingTasks }}</div>
                             <div class="text-gray-600 text-xs">В работе</div>
+                        </div>
+                    </div>
+
+                    <!-- Прогресс бар -->
+                    <div v-if="userStats.totalTasks > 0" class="flex-shrink-0 bg-white/60 backdrop-blur-sm border-b border-gray-200 p-3">
+                        <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                            <span>Прогресс выполнения</span>
+                            <span>{{ completionPercentage }}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-green-500 h-2 rounded-full transition-all duration-500" 
+                                 :style="{ width: completionPercentage + '%' }"></div>
                         </div>
                     </div>
 
@@ -212,14 +275,23 @@
 
                         <!-- Пустое состояние -->
                         <div 
-                            v-if="tasks.length === 0"
+                            v-if="tasks.length === 0 && !isLoading"
                             class="bg-white/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-lg border-2 border-dashed border-gray-300"
                         >
                             <i class="fas fa-inbox text-3xl text-gray-400 mb-3"></i>
-                            <p class="text-gray-500 text-sm mb-1">Список задач пуст</p>
+                            <p class="text-gray-500 text-sm mb-1">Ваш список задач пуст</p>
                             <p class="text-gray-400 text-xs">
-                                Добавьте задачи через Telegram или форму ниже
+                                Добавьте первую задачу через форму ниже
                             </p>
+                        </div>
+
+                        <!-- Загрузка -->
+                        <div 
+                            v-if="isLoading"
+                            class="bg-white/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-lg"
+                        >
+                            <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-3"></i>
+                            <p class="text-gray-500 text-sm">Загрузка ваших задач...</p>
                         </div>
                     </div>
 
@@ -233,11 +305,12 @@
                                 type="text" 
                                 placeholder="Новая задача..."
                                 class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 text-base"
+                                :disabled="!userId"
                             >
                             <!-- Кнопка - ОТДЕЛЬНО ПОД ИНПУТОМ -->
                             <button 
                                 @click="addTask"
-                                :disabled="!newTask.trim()"
+                                :disabled="!newTask.trim() || !userId"
                                 class="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 text-base"
                             >
                                 <i class="fas fa-plus"></i>
@@ -248,7 +321,7 @@
                         <!-- Статус -->
                         <div class="text-center mt-3">
                             <p class="text-gray-500 text-xs">
-                                Статус: {{ apiStatus }} 
+                                {{ apiStatus }}
                                 <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 ml-1">
                                     <i class="fas fa-refresh"></i>
                                 </button>
