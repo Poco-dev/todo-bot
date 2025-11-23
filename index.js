@@ -1,17 +1,65 @@
-// server.js
-const express = require('express');
-const { Telegraf } = require('telegraf');
-const mongoose = require('mongoose');
-const cors = require('cors');
+const express = require("express");
+const { Telegraf } = require("telegraf");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Подключение к MongoDB
-mongoose.connect('mongodb://localhost:27017/todo_bot')
-  .then(() => console.log('✅ MongoDB подключена'))
-  .catch(err => console.error('❌ Ошибка подключения MongoDB:', err));
+// Переменные окружения
+const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+// АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ URL
+const getWebAppUrl = () => {
+  if (process.env.WEB_APP_URL && process.env.WEB_APP_URL !== 'https://your-app.railway.app') {
+    return process.env.WEB_APP_URL;
+  }
+  if (process.env.RAILWAY_STATIC_URL) {
+    return `https://${process.env.RAILWAY_STATIC_URL}`;
+  }
+  return `http://localhost:${PORT}`;
+};
+
+const WEB_APP_URL = getWebAppUrl();
+
+console.log('🔧 Configuration:');
+console.log('PORT:', PORT);
+console.log('MONGODB_URI:', MONGODB_URI ? '✅ Set' : '❌ Not set');
+console.log('BOT_TOKEN:', BOT_TOKEN ? '✅ Set' : '❌ Not set');
+console.log('WEB_APP_URL:', WEB_APP_URL);
+
+// Проверка обязательных переменных
+if (!BOT_TOKEN) {
+  console.error("❌ BOT_TOKEN не установлен!");
+  process.exit(1);
+}
+
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI не установлен!");
+  process.exit(1);
+}
+
+// Подключение к MongoDB с таймаутом
+console.log('🔗 Connecting to MongoDB...');
+mongoose
+  .connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => {
+    console.log("✅ MongoDB подключена успешно");
+    console.log("📊 Database:", mongoose.connection.name);
+    console.log("🎯 Host:", mongoose.connection.host);
+  })
+  .catch((err) => {
+    console.error("❌ Ошибка подключения MongoDB:", err.message);
+    console.log("📝 MONGODB_URI:", MONGODB_URI);
+    process.exit(1);
+  });
 
 // Схема задачи
 const taskSchema = new mongoose.Schema({
@@ -22,40 +70,38 @@ const taskSchema = new mongoose.Schema({
   username: String,
 });
 
-const Task = mongoose.model('Task', taskSchema);
+const Task = mongoose.model("Task", taskSchema);
 
 // Инициализация бота
-const bot = new Telegraf('8029207798:AAFYhuSooNi49tHZ06B8HnUYjigdRCxLprw');
+const bot = new Telegraf(BOT_TOKEN);
 
-// Команда /start - просто отправляет ссылку на сайт
+// Команда /start
 bot.start((ctx) => {
-  const webAppUrl = 'http://localhost:3000'; // Замените на ваш URL
-  const message = `📝 Добро пожаловать в Todo List Bot!\n\n` +
+  const message =
+    `📝 Добро пожаловать в Todo List Bot!\n\n` +
     `Нажмите на кнопку ниже чтобы открыть ваш список задач:`;
-  
+
   ctx.reply(message, {
     reply_markup: {
       inline_keyboard: [
-        [{
-          text: '📋 Открыть Todo List',
-          web_app: { url: webAppUrl }
-        }]
-      ]
-    }
+        [
+          {
+            text: "📋 Открыть Todo List",
+            web_app: { url: WEB_APP_URL },
+          },
+        ],
+      ],
+    },
   });
 });
 
-// Обработка обычных сообщений - добавляем как задачу и показываем ссылку
-bot.on('text', async (ctx) => {
+// Обработка обычных сообщений
+bot.on("text", async (ctx) => {
   const text = ctx.message.text.trim();
-  
-  // Игнорируем команды
-  if (text.startsWith('/')) return;
-  
-  const webAppUrl = 'http://localhost:3000';
-  
+
+  if (text.startsWith("/")) return;
+
   try {
-    // Добавляем задачу в базу
     const task = new Task({
       task: text,
       userId: ctx.from.id,
@@ -63,56 +109,72 @@ bot.on('text', async (ctx) => {
     });
 
     await task.save();
-    
-    // Отправляем сообщение с кнопкой
-    ctx.reply(`✅ Задача "${text}" добавлена!\n\nОткройте приложение чтобы увидеть все задачи:`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{
-            text: '📋 Открыть Todo List',
-            web_app: { url: webAppUrl }
-          }]
-        ]
+
+    ctx.reply(
+      `✅ Задача "${text}" добавлена!\n\nОткройте приложение чтобы увидеть все задачи:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "📋 Открыть Todo List",
+                web_app: { url: WEB_APP_URL },
+              },
+            ],
+          ],
+        },
       }
-    });
-    
+    );
   } catch (error) {
     console.error(error);
-    ctx.reply('❌ Ошибка при добавлении задачи');
+    ctx.reply("❌ Ошибка при добавлении задачи");
   }
 });
 
+// Команда /site
+bot.command("site", (ctx) => {
+  ctx.reply("Откройте ваш Todo List:", {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "📋 Открыть приложение",
+            web_app: { url: WEB_APP_URL },
+          },
+        ],
+      ],
+    },
+  });
+});
 
-// API endpoint для получения всех задач
-app.get('/api/tasks', async (req, res) => {
+// API endpoints
+app.get("/api/tasks", async (req, res) => {
   try {
     const tasks = await Task.find().sort({ createdAt: -1 });
     res.json(tasks);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка при получении задач' });
+    res.status(500).json({ error: "Ошибка при получении задач" });
   }
 });
 
-// API endpoint для добавления задачи
-app.post('/api/tasks', async (req, res) => {
+app.post("/api/tasks", async (req, res) => {
   try {
     const { task, userId, username } = req.body;
-    const newTask = new Task({ 
-      task, 
-      userId: userId || 0, 
-      username: username || 'web-user' 
+    const newTask = new Task({
+      task,
+      userId: userId || 0,
+      username: username || "web-user",
     });
     await newTask.save();
     res.json(newTask);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка при добавлении задачи' });
+    res.status(500).json({ error: "Ошибка при добавлении задачи" });
   }
 });
 
-// API endpoint для обновления задачи
-app.put('/api/tasks/:id', async (req, res) => {
+app.put("/api/tasks/:id", async (req, res) => {
   try {
     const { completed } = req.body;
     const task = await Task.findByIdAndUpdate(
@@ -123,63 +185,65 @@ app.put('/api/tasks/:id', async (req, res) => {
     res.json(task);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка при обновлении задачи' });
+    res.status(500).json({ error: "Ошибка при обновлении задачи" });
   }
 });
 
-// API endpoint для удаления задачи
-app.delete('/api/tasks/:id', async (req, res) => {
+app.delete("/api/tasks/:id", async (req, res) => {
   try {
     await Task.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Задача удалена' });
+    res.json({ message: "Задача удалена" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка при удалении задачи' });
+    res.status(500).json({ error: "Ошибка при удалении задачи" });
   }
 });
 
-// Статус API
-app.get('/api/status', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString()
+app.get("/api/status", (req, res) => {
+  res.json({
+    status: "OK",
+    mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    environment: process.env.NODE_ENV || "development",
+    webAppUrl: WEB_APP_URL,
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Раздаем статические файлы для Vue приложения
-app.use(express.static('public'));
-
-// Главная страница
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/to-do/index.html');
+// Тестовый маршрут
+app.get("/test", (req, res) => {
+  res.json({ 
+    message: "Server is working!", 
+    timestamp: new Date(),
+    webAppUrl: WEB_APP_URL
+  });
 });
 
-// Запуск сервера и бота
-const PORT = process.env.PORT || 3000;
+// РАЗДАЕМ СТАТИЧЕСКИЕ ФАЙЛЫ ИЗ ПАПКИ to-do
+app.use(express.static(path.join(__dirname, "to-do")));
 
-app.listen(PORT, () => {
+// Все остальные запросы на index.html из папки to-do
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "to-do", "index.html"));
+});
+
+// Запуск сервера
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`📊 API доступно по http://localhost:${PORT}/api/tasks`);
-  console.log(`🌐 Сайт доступен по http://localhost:${PORT}`);
+  console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
+  console.log(`📊 API Status: http://0.0.0.0:${PORT}/api/status`);
+  console.log(`🧪 Test: http://0.0.0.0:${PORT}/test`);
 });
 
 // Запуск бота
-bot.launch().then(() => {
-  console.log('🤖 Бот запущен');
-}).catch(error => {
-  console.error('❌ Ошибка запуска бота:', error);
-});
+bot
+  .launch()
+  .then(() => {
+    console.log("🤖 Бот запущен");
+  })
+  .catch((error) => {
+    console.error("❌ Ошибка запуска бота:", error);
+  });
 
-// Элегантное завершение работы
-process.once('SIGINT', () => {
-  console.log('🛑 Остановка бота...');
-  bot.stop('SIGINT');
-  process.exit(0);
-});
-
-process.once('SIGTERM', () => {
-  console.log('🛑 Остановка бота...');
-  bot.stop('SIGTERM');
-  process.exit(0);
-});
+// Graceful shutdown
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
