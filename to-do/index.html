@@ -2,12 +2,49 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Todo List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Мой Todo List</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        input, textarea, select {
+            font-size: 16px !important;
+        }
+        
+        body {
+            -webkit-overflow-scrolling: touch;
+            overflow: hidden;
+        }
+        
+        .container-height {
+            height: 100dvh;
+            max-height: -webkit-fill-available;
+        }
+        
+        .safe-area-inset-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        
+        /* Анимации */
+        .task-enter-active {
+            transition: all 0.3s ease;
+        }
+        .task-leave-active {
+            transition: all 0.3s ease;
+            position: absolute;
+        }
+        .task-enter-from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        .task-leave-to {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
+<body class="bg-gray-50">
     <div id="app"></div>
 
     <script>
@@ -18,39 +55,98 @@
                 return {
                     tasks: [],
                     newTask: '',
+                    apiStatus: 'Загрузка...',
+                    apiUrl: '/api',
                     userId: null,
-                    loading: true
+                    userName: 'Пользователь',
+                    isLoading: true,
+                    userStats: {
+                        totalTasks: 0,
+                        completedTasks: 0,
+                        pendingTasks: 0
+                    }
                 }
             },
-            mounted() {
+            async mounted() {
                 const urlParams = new URLSearchParams(window.location.search);
                 this.userId = urlParams.get('userId');
                 
                 if (this.userId) {
-                    this.fetchTasks();
+                    await this.authenticateUser();
+                    await this.fetchUserStats();
+                    await this.fetchTasks();
+                    setInterval(this.fetchTasks, 5000);
+                    setInterval(this.fetchUserStats, 10000);
                 } else {
-                    this.loading = false;
+                    this.apiStatus = '❌ Не указан пользователь';
+                    this.isLoading = false;
+                }
+            },
+            computed: {
+                completionPercentage() {
+                    if (this.userStats.totalTasks === 0) return 0;
+                    return Math.round((this.userStats.completedTasks / this.userStats.totalTasks) * 100);
+                },
+                sortedTasks() {
+                    return [...this.tasks].sort((a, b) => {
+                        // Сначала невыполненные, потом выполненные
+                        if (a.completed !== b.completed) {
+                            return a.completed ? 1 : -1;
+                        }
+                        // По дате создания (новые сверху)
+                        return new Date(b.createdAt) - new Date(a.createdAt);
+                    });
                 }
             },
             methods: {
-                async fetchTasks() {
+                async authenticateUser() {
                     try {
-                        const response = await fetch(`/api/tasks?userId=${this.userId}`);
+                        const response = await fetch(`${this.apiUrl}/user?userId=${this.userId}`);
+                        const userData = await response.json();
+                        
+                        if (userData.authenticated) {
+                            this.apiStatus = '✅ Авторизован';
+                            this.userName = `Пользователь ${this.userId}`;
+                        }
+                    } catch (error) {
+                        console.error('Auth error:', error);
+                        this.apiStatus = '❌ Ошибка авторизации';
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                async fetchUserStats() {
+                    if (!this.userId) return;
+                    
+                    try {
+                        const response = await fetch(`${this.apiUrl}/user/stats?userId=${this.userId}`);
+                        this.userStats = await response.json();
+                    } catch (error) {
+                        console.error('Error fetching stats:', error);
+                    }
+                },
+                
+                async fetchTasks() {
+                    if (!this.userId) return;
+                    
+                    try {
+                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`);
                         this.tasks = await response.json();
                     } catch (error) {
-                        console.error('Error:', error);
-                    } finally {
-                        this.loading = false;
+                        console.error('Error fetching tasks:', error);
                     }
                 },
                 
                 async addTask() {
-                    if (!this.newTask.trim()) return;
+                    if (!this.newTask.trim() || !this.userId) return;
                     
                     try {
-                        const response = await fetch('/api/tasks', {
+                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
                             body: JSON.stringify({ 
                                 task: this.newTask.trim(),
                                 userId: this.userId 
@@ -59,81 +155,236 @@
                         
                         if (response.ok) {
                             this.newTask = '';
-                            this.fetchTasks();
+                            await this.fetchTasks();
+                            await this.fetchUserStats();
                         }
                     } catch (error) {
-                        console.error('Error:', error);
+                        console.error('Error adding task:', error);
                     }
                 },
                 
                 async deleteTask(task) {
                     try {
-                        await fetch(`/api/tasks/${task._id}`, { method: 'DELETE' });
-                        this.fetchTasks();
+                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
+                            method: 'DELETE',
+                        });
+                        
+                        if (response.ok) {
+                            await this.fetchTasks();
+                            await this.fetchUserStats();
+                        }
                     } catch (error) {
-                        console.error('Error:', error);
+                        console.error('Error deleting task:', error);
                     }
                 },
                 
                 async toggleTask(task) {
                     try {
-                        await fetch(`/api/tasks/${task._id}`, {
+                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
                             method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
                             body: JSON.stringify({ completed: !task.completed }),
                         });
-                        this.fetchTasks();
+                        
+                        if (response.ok) {
+                            await this.fetchTasks();
+                            await this.fetchUserStats();
+                        }
                     } catch (error) {
-                        console.error('Error:', error);
+                        console.error('Error updating task:', error);
                     }
+                },
+                
+                formatDate(dateString) {
+                    return new Date(dateString).toLocaleDateString('ru-RU', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                },
+                
+                getTaskStatus(task) {
+                    return task.completed ? 'Выполнено' : 'В процессе';
                 }
             },
             template: `
-                <div class="min-h-screen p-4 max-w-md mx-auto">
-                    <!-- Header -->
-                    <div class="bg-white rounded-lg shadow p-4 mb-4">
-                        <h1 class="text-2xl font-bold text-gray-800">My Todo List</h1>
-                        <p class="text-gray-600" v-if="userId">User ID: {{ userId }}</p>
-                        <p class="text-gray-600" v-else>No user specified</p>
+                <div class="container-height flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+                    <!-- Хедер - фиксированный -->
+                    <div class="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200/50 p-4 shadow-sm">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                <i class="fas fa-tasks text-white text-xl"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h1 class="text-2xl font-bold text-gray-800 truncate">Мой Todo List</h1>
+                                <p class="text-gray-600 text-sm">ID: {{ userId }}</p>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Tasks List -->
-                    <div class="space-y-3 mb-4">
-                        <div v-if="loading" class="text-center py-8">
-                            <div class="text-gray-500">Loading...</div>
+                    <!-- Статистика - фиксированная -->
+                    <div class="flex-shrink-0 grid grid-cols-3 gap-3 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200/50">
+                        <div class="text-center bg-white/90 rounded-xl p-3 shadow-sm border border-white/20">
+                            <div class="text-2xl font-bold text-blue-600">{{ userStats.totalTasks }}</div>
+                            <div class="text-gray-600 text-xs font-medium">Всего</div>
                         </div>
-
-                        <div v-else-if="tasks.length === 0" class="text-center py-8 bg-white rounded-lg shadow">
-                            <div class="text-gray-500">No tasks yet</div>
+                        <div class="text-center bg-white/90 rounded-xl p-3 shadow-sm border border-white/20">
+                            <div class="text-2xl font-bold text-green-600">{{ userStats.completedTasks }}</div>
+                            <div class="text-gray-600 text-xs font-medium">Готово</div>
                         </div>
+                        <div class="text-center bg-white/90 rounded-xl p-3 shadow-sm border border-white/20">
+                            <div class="text-2xl font-bold text-orange-600">{{ userStats.pendingTasks }}</div>
+                            <div class="text-gray-600 text-xs font-medium">В работе</div>
+                        </div>
+                    </div>
 
-                        <div v-else v-for="task in tasks" :key="task._id" 
-                             class="bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                                <input type="checkbox" :checked="task.completed" 
-                                       @change="toggleTask(task)"
-                                       class="w-5 h-5">
-                                <span :class="{'line-through text-gray-500': task.completed}">
-                                    {{ task.task }}
-                                </span>
+                    <!-- Прогресс бар -->
+                    <div v-if="userStats.totalTasks > 0" class="flex-shrink-0 bg-white/60 backdrop-blur-sm border-b border-gray-200/50 p-4">
+                        <div class="flex items-center justify-between text-sm text-gray-600 mb-2">
+                            <span class="font-medium">Прогресс выполнения</span>
+                            <span class="font-bold">{{ completionPercentage }}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200/80 rounded-full h-3 shadow-inner">
+                            <div class="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all duration-700 ease-out shadow-sm" 
+                                 :style="{ width: completionPercentage + '%' }"></div>
+                        </div>
+                    </div>
+
+                    <!-- Список задач - скроллируемый -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3">
+                        <!-- Задачи с анимациями -->
+                        <transition-group name="task" tag="div" class="space-y-3">
+                            <div 
+                                v-for="task in sortedTasks" 
+                                :key="task._id"
+                                class="group bg-white/95 backdrop-blur-sm rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/40 hover:border-blue-200/50"
+                                :class="{
+                                    'opacity-70': task.completed,
+                                    'border-green-200/50': task.completed
+                                }"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-4 flex-1">
+                                        <button 
+                                            @click="toggleTask(task)"
+                                            class="w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110 flex-shrink-0 shadow-sm"
+                                            :class="task.completed 
+                                                ? 'bg-gradient-to-r from-green-400 to-green-500 border-green-500 text-white shadow-green-200' 
+                                                : 'border-gray-300 hover:border-green-400 text-transparent bg-white shadow-gray-200'"
+                                        >
+                                            <i class="fas fa-check text-xs"></i>
+                                        </button>
+                                        
+                                        <div class="flex-1 min-w-0">
+                                            <p 
+                                                class="text-gray-800 font-semibold text-lg break-words leading-tight"
+                                                :class="task.completed ? 'line-through text-gray-500' : ''"
+                                            >
+                                                {{ task.task }}
+                                            </p>
+                                            <div class="flex items-center space-x-3 mt-2">
+                                                <span class="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-full">
+                                                    <i class="far fa-clock mr-1"></i>
+                                                    {{ formatDate(task.createdAt) }}
+                                                </span>
+                                                <span 
+                                                    v-if="task.username && task.username !== 'user'"
+                                                    class="text-xs bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 px-2 py-1 rounded-full font-medium"
+                                                >
+                                                    <i class="fas fa-user mr-1"></i>
+                                                    {{ task.username }}
+                                                </span>
+                                                <span class="text-xs px-2 py-1 rounded-full font-medium"
+                                                    :class="task.completed 
+                                                        ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800' 
+                                                        : 'bg-gradient-to-r from-orange-100 to-orange-200 text-orange-800'">
+                                                    {{ getTaskStatus(task) }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button 
+                                        @click="deleteTask(task)"
+                                        class="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-3 hover:scale-110"
+                                    >
+                                        <i class="fas fa-trash-alt text-sm"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <button @click="deleteTask(task)" class="text-red-500 hover:text-red-700">
-                                ×
+                        </transition-group>
+
+                        <!-- Пустое состояние -->
+                        <div 
+                            v-if="tasks.length === 0 && !isLoading"
+                            class="bg-white/95 backdrop-blur-sm rounded-2xl p-8 text-center shadow-lg border-2 border-dashed border-gray-300/50"
+                        >
+                            <div class="w-16 h-16 bg-gradient-to-r from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <i class="fas fa-inbox text-2xl text-gray-400"></i>
+                            </div>
+                            <p class="text-gray-600 text-lg font-semibold mb-2">Список задач пуст</p>
+                            <p class="text-gray-400 text-sm">
+                                Добавьте первую задачу через форму ниже
+                            </p>
+                        </div>
+
+                        <!-- Загрузка -->
+                        <div 
+                            v-if="isLoading"
+                            class="bg-white/95 backdrop-blur-sm rounded-2xl p-8 text-center shadow-lg border border-white/40"
+                        >
+                            <div class="w-16 h-16 bg-gradient-to-r from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <i class="fas fa-spinner fa-spin text-2xl text-blue-500"></i>
+                            </div>
+                            <p class="text-gray-600 text-lg font-semibold">Загрузка ваших задач...</p>
+                        </div>
+                    </div>
+
+                    <!-- Форма добавления - ФИКСИРОВАННАЯ ВНИЗУ -->
+                    <div class="flex-shrink-0 bg-white/95 backdrop-blur-sm border-t border-gray-200/50 p-4 safe-area-inset-bottom shadow-lg">
+                        <div class="space-y-3">
+                            <!-- Поле ввода -->
+                            <div class="relative">
+                                <input 
+                                    v-model="newTask"
+                                    @keyup.enter="addTask"
+                                    type="text" 
+                                    placeholder="Напишите новую задачу..."
+                                    class="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg bg-white/80 backdrop-blur-sm"
+                                    :disabled="!userId"
+                                >
+                                <div class="absolute right-3 top-1/2 transform -translate-y-1/2">
+                                    <i class="fas fa-edit text-gray-400 text-lg"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Кнопка - ОТДЕЛЬНО ПОД ИНПУТОМ -->
+                            <button 
+                                @click="addTask"
+                                :disabled="!newTask.trim() || !userId"
+                                class="w-full px-5 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold text-lg rounded-2xl hover:shadow-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-3 shadow-lg"
+                            >
+                                <i class="fas fa-plus-circle text-xl"></i>
+                                <span class="text-lg">Добавить задачу</span>
                             </button>
                         </div>
-                    </div>
-
-                    <!-- Add Task Form -->
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <input v-model="newTask" @keyup.enter="addTask"
-                               placeholder="New task..." 
-                               class="w-full p-3 border rounded-lg mb-3"
-                               :disabled="!userId">
-                        <button @click="addTask" 
-                                :disabled="!newTask.trim() || !userId"
-                                class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 disabled:opacity-50">
-                            Add Task
-                        </button>
+                        
+                        <!-- Статус -->
+                        <div class="text-center mt-4">
+                            <p class="text-gray-500 text-sm font-medium">
+                                <span class="inline-flex items-center space-x-2 bg-white/80 px-3 py-2 rounded-xl border border-gray-200/50">
+                                    <span :class="apiStatus.includes('✅') ? 'text-green-500' : 'text-red-500'">
+                                        {{ apiStatus }}
+                                    </span>
+                                    <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 transition-colors duration-200 hover:scale-110">
+                                        <i class="fas fa-redo-alt text-sm"></i>
+                                    </button>
+                                </span>
+                            </p>
+                        </div>
                     </div>
                 </div>
             `

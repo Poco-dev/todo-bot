@@ -14,11 +14,11 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEB_APP_URL = process.env.WEB_APP_URL || `http://localhost:${PORT}`;
 
-console.log('🚀 Starting application...');
-console.log('PORT:', PORT);
-console.log('MONGODB_URI:', MONGODB_URI ? '✅' : '❌');
-console.log('BOT_TOKEN:', BOT_TOKEN ? '✅' : '❌');
-console.log('WEB_APP_URL:', WEB_APP_URL);
+console.log('🎯 Startup Configuration:');
+console.log('📍 Environment:', process.env.NODE_ENV || 'development');
+console.log('🔗 MongoDB:', MONGODB_URI ? '✅ Configured' : '❌ Missing');
+console.log('🤖 Bot Token:', BOT_TOKEN ? '✅ Configured' : '❌ Missing');
+console.log('🌐 Web URL:', WEB_APP_URL);
 
 // Проверка переменных
 if (!BOT_TOKEN) {
@@ -33,22 +33,34 @@ if (!MONGODB_URI) {
 
 // Подключение к MongoDB
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log("✅ MongoDB connected"))
+  .then(() => console.log("✅ MongoDB connected successfully"))
   .catch(err => {
     console.error("❌ MongoDB connection error:", err.message);
     process.exit(1);
   });
 
-// Простая схема задачи
+// Схема задачи
 const taskSchema = new mongoose.Schema({
   task: String,
   completed: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
-  userId: Number,
+  userId: { type: Number, required: true },
   username: String,
+  chatId: Number,
 });
 
 const Task = mongoose.model("Task", taskSchema);
+
+// Схема пользователей
+const userSessionSchema = new mongoose.Schema({
+  userId: { type: Number, required: true, unique: true },
+  username: String,
+  firstName: String,
+  lastActive: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const UserSession = mongoose.model("UserSession", userSessionSchema);
 
 // Бот
 const bot = new Telegraf(BOT_TOKEN);
@@ -58,10 +70,13 @@ bot.start((ctx) => {
   const userId = ctx.from.id;
   const personalUrl = `${WEB_APP_URL}?userId=${userId}`;
   
-  ctx.reply(`📝 Welcome to your Todo List, ${ctx.from.first_name}!`, {
+  const message = `📝 Добро пожаловать в ваш персональный Todo List, ${ctx.from.first_name}!\n\n` +
+    `Нажмите на кнопку ниже чтобы открыть ваш список задач:`;
+
+  ctx.reply(message, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "📋 Open My Todo List", web_app: { url: personalUrl } }]
+        [{ text: "📋 Открыть Мой Todo List", web_app: { url: personalUrl } }]
       ]
     }
   });
@@ -76,22 +91,81 @@ bot.on("text", async (ctx) => {
     const task = new Task({
       task: text,
       userId: ctx.from.id,
-      username: ctx.from.first_name,
+      username: ctx.from.username || ctx.from.first_name,
+      chatId: ctx.chat.id,
     });
     await task.save();
 
     const personalUrl = `${WEB_APP_URL}?userId=${ctx.from.id}`;
-    ctx.reply(`✅ Task added!`, {
+    ctx.reply(`✅ Задача "${text}" добавлена в ваш список!\n\nОткройте приложение чтобы увидеть все ваши задачи:`, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "📋 Open My List", web_app: { url: personalUrl } }]
+          [{ text: "📋 Открыть Мой Todo List", web_app: { url: personalUrl } }]
         ]
       }
     });
   } catch (error) {
     console.error(error);
-    ctx.reply("❌ Error adding task");
+    ctx.reply("❌ Ошибка при добавлении задачи");
   }
+});
+
+// Команда /mytasks
+bot.command("mytasks", async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const tasks = await Task.find({ userId }).sort({ createdAt: -1 }).limit(10);
+    
+    if (tasks.length === 0) {
+      return ctx.reply("📭 Ваш список задач пуст");
+    }
+
+    let message = '📋 Ваши задачи:\n\n';
+    tasks.forEach((task, index) => {
+      const status = task.completed ? '✅' : '⏳';
+      message += `${index + 1}. ${status} ${task.task}\n`;
+    });
+
+    message += `\nВсего задач: ${tasks.length}`;
+    
+    const personalUrl = `${WEB_APP_URL}?userId=${userId}`;
+    
+    ctx.reply(message, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📋 Открыть полный список", web_app: { url: personalUrl } }]
+        ]
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    ctx.reply("❌ Ошибка при получении задач");
+  }
+});
+
+// Команда /stats
+bot.command("stats", async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const totalTasks = await Task.countDocuments({ userId });
+    const completedTasks = await Task.countDocuments({ userId, completed: true });
+    const pendingTasks = totalTasks - completedTasks;
+
+    const message = `📊 Ваша статистика:\n\n` +
+      `📝 Всего задач: ${totalTasks}\n` +
+      `✅ Выполнено: ${completedTasks}\n` +
+      `⏳ В процессе: ${pendingTasks}`;
+
+    ctx.reply(message);
+  } catch (error) {
+    console.error(error);
+    ctx.reply("❌ Ошибка при получении статистики");
+  }
+});
+
+// Обработка ошибок бота
+bot.catch((err, ctx) => {
+  console.error(`❌ Ошибка бота для ${ctx.updateType}:`, err);
 });
 
 // API endpoints
@@ -143,11 +217,27 @@ app.delete("/api/tasks/:id", async (req, res) => {
   }
 });
 
+app.get("/api/user/stats", async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: "userId required" });
+
+    const totalTasks = await Task.countDocuments({ userId });
+    const completedTasks = await Task.countDocuments({ userId, completed: true });
+    const pendingTasks = totalTasks - completedTasks;
+
+    res.json({ totalTasks, completedTasks, pendingTasks });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check
 app.get("/api/status", (req, res) => {
   res.json({ 
     status: "OK", 
-    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected" 
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -160,13 +250,19 @@ app.get("/", (req, res) => {
 });
 
 // Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('='.repeat(50));
+  console.log('🚀 APPLICATION STARTED SUCCESSFULLY');
+  console.log('='.repeat(50));
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`🌐 Web URL: ${WEB_APP_URL}`);
+  console.log(`📊 API: ${WEB_APP_URL}/api/status`);
+  console.log('='.repeat(50));
 });
 
 // Запуск бота
 bot.launch().then(() => {
-  console.log("✅ Bot started");
+  console.log("🤖 Bot started successfully");
 }).catch(error => {
   console.error("❌ Bot error:", error);
 });
