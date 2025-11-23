@@ -21,16 +21,20 @@ const getWebAppUrl = () => {
   if (process.env.RAILWAY_STATIC_URL) {
     return `https://${process.env.RAILWAY_STATIC_URL}`;
   }
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  }
   return `http://localhost:${PORT}`;
 };
 
 const WEB_APP_URL = getWebAppUrl();
 
-console.log('🔧 Configuration:');
-console.log('PORT:', PORT);
-console.log('MONGODB_URI:', MONGODB_URI ? '✅ Set' : '❌ Not set');
-console.log('BOT_TOKEN:', BOT_TOKEN ? '✅ Set' : '❌ Not set');
-console.log('WEB_APP_URL:', WEB_APP_URL);
+console.log('🎯 Startup Configuration:');
+console.log('📍 Environment:', process.env.NODE_ENV || 'development');
+console.log('🔗 MongoDB:', MONGODB_URI ? '✅ Configured' : '❌ Missing');
+console.log('🤖 Bot Token:', BOT_TOKEN ? '✅ Configured' : '❌ Missing');
+console.log('🌐 Web URL:', WEB_APP_URL);
+console.log('🚀 Port:', PORT);
 
 // Проверка обязательных переменных
 if (!BOT_TOKEN) {
@@ -47,7 +51,7 @@ if (!MONGODB_URI) {
 console.log('🔗 Connecting to MongoDB...');
 mongoose
   .connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 10000,
     socketTimeoutMS: 45000,
   })
   .then(() => {
@@ -147,6 +151,11 @@ bot.command("site", (ctx) => {
   });
 });
 
+// Обработка ошибок бота
+bot.catch((err, ctx) => {
+  console.error(`❌ Ошибка бота для ${ctx.updateType}:`, err);
+});
+
 // API endpoints
 app.get("/api/tasks", async (req, res) => {
   try {
@@ -209,6 +218,16 @@ app.get("/api/status", (req, res) => {
   });
 });
 
+// Health check для Railway
+app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.status(dbStatus === 'connected' ? 200 : 503).json({
+    status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
+    database: dbStatus,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Тестовый маршрут
 app.get("/test", (req, res) => {
   res.json({ 
@@ -221,29 +240,41 @@ app.get("/test", (req, res) => {
 // РАЗДАЕМ СТАТИЧЕСКИЕ ФАЙЛЫ ИЗ ПАПКИ to-do
 app.use(express.static(path.join(__dirname, "to-do")));
 
-// Все остальные запросы на index.html из папки to-do
-app.get("*", (req, res) => {
+// Все остальные GET запросы отправляем на index.html
+app.get("/*", (req, res) => {
   res.sendFile(path.join(__dirname, "to-do", "index.html"));
 });
 
 // Запуск сервера
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`🌐 Web App URL: ${WEB_APP_URL}`);
-  console.log(`📊 API Status: http://0.0.0.0:${PORT}/api/status`);
-  console.log(`🧪 Test: http://0.0.0.0:${PORT}/test`);
+  console.log('='.repeat(50));
+  console.log('🚀 APPLICATION STARTED SUCCESSFULLY');
+  console.log('='.repeat(50));
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`🌐 Web URL: ${WEB_APP_URL}`);
+  console.log(`📊 API: ${WEB_APP_URL}/api/status`);
+  console.log(`🧪 Test: ${WEB_APP_URL}/test`);
+  console.log(`❤️ Health: ${WEB_APP_URL}/health`);
+  console.log('='.repeat(50));
 });
 
 // Запуск бота
-bot
-  .launch()
-  .then(() => {
-    console.log("🤖 Бот запущен");
-  })
-  .catch((error) => {
-    console.error("❌ Ошибка запуска бота:", error);
-  });
+bot.launch().then(() => {
+  console.log("🤖 Бот запущен успешно");
+}).catch((error) => {
+  console.error("❌ Критическая ошибка бота:", error);
+  console.log("🌐 Сайт продолжает работать без бота");
+});
 
 // Graceful shutdown
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once("SIGINT", () => {
+  console.log('🛑 Остановка приложения...');
+  bot.stop();
+  process.exit(0);
+});
+
+process.once("SIGTERM", () => {
+  console.log('🛑 Остановка приложения...');
+  bot.stop();
+  process.exit(0);
+});
