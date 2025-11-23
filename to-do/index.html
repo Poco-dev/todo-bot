@@ -2,13 +2,30 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Todo List Bot</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Предотвращаем zoom при фокусе на iOS */
+        input, textarea, select {
+            font-size: 16px !important;
+        }
+        
+        /* Скрываем скроллбар для веб-приложения */
+        body {
+            -webkit-overflow-scrolling: touch;
+            overflow: hidden;
+        }
+        
+        .container-height {
+            height: 100dvh; /* Используем динамическое viewport height */
+            max-height: -webkit-fill-available; /* Для iOS */
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50">
     <div id="app"></div>
 
     <script>
@@ -20,11 +37,10 @@
                     tasks: [],
                     newTask: '',
                     apiStatus: 'Загрузка...',
-                    apiUrl: '/api' // Относительный путь, т.к. на том же домене
+                    apiUrl: '/api'
                 }
             },
             async mounted() {
-                await this.checkStatus();
                 await this.fetchTasks();
                 // Авто-обновление каждые 5 секунд
                 setInterval(this.fetchTasks, 5000);
@@ -41,16 +57,6 @@
                 }
             },
             methods: {
-                async checkStatus() {
-                    try {
-                        const response = await fetch(`${this.apiUrl}/status`);
-                        const data = await response.json();
-                        this.apiStatus = data.mongodb === 'connected' ? '✅ Подключено' : '❌ Ошибка';
-                    } catch (error) {
-                        this.apiStatus = '❌ Ошибка подключения';
-                    }
-                },
-                
                 async fetchTasks() {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks`);
@@ -123,38 +129,38 @@
                 }
             },
             template: `
-                <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-                    <!-- Хедер -->
-                    <div class="max-w-2xl mx-auto mb-8 text-center">
-                        <div class="inline-flex items-center space-x-3 bg-white/80 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg border border-white/20">
-                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-tasks text-white text-xl"></i>
+                <div class="container-height flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+                    <!-- Хедер - фиксированный -->
+                    <div class="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200 p-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-tasks text-white text-lg"></i>
                             </div>
-                            <div class="text-left">
-                                <h1 class="text-2xl font-bold text-gray-800">Todo List Bot</h1>
-                                <p class="text-gray-600 text-sm">Задачи синхронизируются с Telegram</p>
+                            <div class="flex-1 min-w-0">
+                                <h1 class="text-xl font-bold text-gray-800 truncate">Todo List</h1>
+                                <p class="text-gray-600 text-xs">Синхронизация с Telegram</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Статистика -->
-                    <div class="max-w-2xl mx-auto mb-6 grid grid-cols-3 gap-4">
-                        <div class="bg-white/90 backdrop-blur-sm rounded-xl p-4 text-center shadow-lg border border-white/20">
-                            <div class="text-2xl font-bold text-blue-600">{{ totalTasks }}</div>
-                            <div class="text-gray-600 text-sm">Всего</div>
+                    <!-- Статистика - фиксированная -->
+                    <div class="flex-shrink-0 grid grid-cols-3 gap-2 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200">
+                        <div class="text-center">
+                            <div class="text-lg font-bold text-blue-600">{{ totalTasks }}</div>
+                            <div class="text-gray-600 text-xs">Всего</div>
                         </div>
-                        <div class="bg-white/90 backdrop-blur-sm rounded-xl p-4 text-center shadow-lg border border-white/20">
-                            <div class="text-2xl font-bold text-green-600">{{ completedTasks }}</div>
-                            <div class="text-gray-600 text-sm">Выполнено</div>
+                        <div class="text-center">
+                            <div class="text-lg font-bold text-green-600">{{ completedTasks }}</div>
+                            <div class="text-gray-600 text-xs">Готово</div>
                         </div>
-                        <div class="bg-white/90 backdrop-blur-sm rounded-xl p-4 text-center shadow-lg border border-white/20">
-                            <div class="text-2xl font-bold text-orange-600">{{ pendingTasks }}</div>
-                            <div class="text-gray-600 text-sm">В процессе</div>
+                        <div class="text-center">
+                            <div class="text-lg font-bold text-orange-600">{{ pendingTasks }}</div>
+                            <div class="text-gray-600 text-xs">В работе</div>
                         </div>
                     </div>
 
-                    <!-- Список задач -->
-                    <div class="max-w-2xl mx-auto space-y-3">
+                    <!-- Список задач - скроллируемый -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3">
                         <!-- Задачи -->
                         <div 
                             v-for="task in tasks" 
@@ -163,10 +169,10 @@
                             :class="task.completed ? 'opacity-75' : ''"
                         >
                             <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-4 flex-1">
+                                <div class="flex items-center space-x-3 flex-1">
                                     <button 
                                         @click="toggleTask(task)"
-                                        class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110"
+                                        class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110 flex-shrink-0"
                                         :class="task.completed 
                                             ? 'bg-green-500 border-green-500 text-white' 
                                             : 'border-gray-300 hover:border-green-400 text-transparent'"
@@ -176,7 +182,7 @@
                                     
                                     <div class="flex-1 min-w-0">
                                         <p 
-                                            class="text-gray-800 font-medium truncate"
+                                            class="text-gray-800 font-medium break-words"
                                             :class="task.completed ? 'line-through text-gray-500' : ''"
                                         >
                                             {{ task.task }}
@@ -197,7 +203,7 @@
                                 
                                 <button 
                                     @click="deleteTask(task)"
-                                    class="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-300 opacity-0 group-hover:opacity-100"
+                                    class="w-7 h-7 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-300 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2"
                                 >
                                     <i class="fas fa-trash text-sm"></i>
                                 </button>
@@ -207,40 +213,43 @@
                         <!-- Пустое состояние -->
                         <div 
                             v-if="tasks.length === 0"
-                            class="bg-white/90 backdrop-blur-sm rounded-xl p-12 text-center shadow-lg border-2 border-dashed border-gray-300"
+                            class="bg-white/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-lg border-2 border-dashed border-gray-300"
                         >
-                            <i class="fas fa-inbox text-4xl text-gray-400 mb-4"></i>
-                            <p class="text-gray-500 text-lg mb-2">Список задач пуст</p>
-                            <p class="text-gray-400 text-sm">
-                                Добавьте задачи через Telegram бота или форму ниже
+                            <i class="fas fa-inbox text-3xl text-gray-400 mb-3"></i>
+                            <p class="text-gray-500 text-sm mb-1">Список задач пуст</p>
+                            <p class="text-gray-400 text-xs">
+                                Добавьте задачи через Telegram или форму ниже
                             </p>
                         </div>
+                    </div>
 
-                        <!-- Форма добавления -->
-                        <div class="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-white/20">
-                            <div class="flex space-x-3">
-                                <input 
-                                    v-model="newTask"
-                                    @keyup.enter="addTask"
-                                    placeholder="Добавить новую задачу..."
-                                    class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                                >
-                                <button 
-                                    @click="addTask"
-                                    :disabled="!newTask.trim()"
-                                    class="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
-                                >
-                                    <i class="fas fa-plus"></i>
-                                    <span>Добавить</span>
-                                </button>
-                            </div>
+                    <!-- Форма добавления - ФИКСИРОВАННАЯ ВНИЗУ -->
+                    <div class="flex-shrink-0 bg-white border-t border-gray-200 p-4 safe-area-inset-bottom">
+                        <div class="space-y-3">
+                            <!-- Поле ввода -->
+                            <input 
+                                v-model="newTask"
+                                @keyup.enter="addTask"
+                                type="text" 
+                                placeholder="Новая задача..."
+                                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 text-base"
+                            >
+                            <!-- Кнопка - ОТДЕЛЬНО ПОД ИНПУТОМ -->
+                            <button 
+                                @click="addTask"
+                                :disabled="!newTask.trim()"
+                                class="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 text-base"
+                            >
+                                <i class="fas fa-plus"></i>
+                                <span>Добавить задачу</span>
+                            </button>
                         </div>
-
+                        
                         <!-- Статус -->
-                        <div class="text-center">
-                            <p class="text-gray-500 text-sm">
+                        <div class="text-center mt-3">
+                            <p class="text-gray-500 text-xs">
                                 Статус: {{ apiStatus }} 
-                                <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 ml-2">
+                                <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 ml-1">
                                     <i class="fas fa-refresh"></i>
                                 </button>
                             </p>
