@@ -2,32 +2,12 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Мой Todo List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Todo List</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        input, textarea, select {
-            font-size: 16px !important;
-        }
-        
-        body {
-            -webkit-overflow-scrolling: touch;
-            overflow: hidden;
-        }
-        
-        .container-height {
-            height: 100dvh;
-            max-height: -webkit-fill-available;
-        }
-        
-        .safe-area-inset-bottom {
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-100">
     <div id="app"></div>
 
     <script>
@@ -38,88 +18,39 @@
                 return {
                     tasks: [],
                     newTask: '',
-                    apiStatus: 'Загрузка...',
-                    apiUrl: '/api',
                     userId: null,
-                    userName: 'Пользователь',
-                    isLoading: true,
-                    userStats: {
-                        totalTasks: 0,
-                        completedTasks: 0,
-                        pendingTasks: 0
-                    }
+                    loading: true
                 }
             },
-            async mounted() {
+            mounted() {
                 const urlParams = new URLSearchParams(window.location.search);
                 this.userId = urlParams.get('userId');
                 
                 if (this.userId) {
-                    await this.authenticateUser();
-                    await this.fetchUserStats();
-                    await this.fetchTasks();
-                    setInterval(this.fetchTasks, 5000);
-                    setInterval(this.fetchUserStats, 10000);
+                    this.fetchTasks();
                 } else {
-                    this.apiStatus = '❌ Не указан пользователь';
-                    this.isLoading = false;
-                }
-            },
-            computed: {
-                completionPercentage() {
-                    if (this.userStats.totalTasks === 0) return 0;
-                    return Math.round((this.userStats.completedTasks / this.userStats.totalTasks) * 100);
+                    this.loading = false;
                 }
             },
             methods: {
-                async authenticateUser() {
-                    try {
-                        const response = await fetch(`${this.apiUrl}/user?userId=${this.userId}`);
-                        const userData = await response.json();
-                        
-                        if (userData.authenticated) {
-                            this.apiStatus = '✅ Авторизован';
-                            this.userName = `Пользователь ${this.userId}`;
-                        }
-                    } catch (error) {
-                        console.error('Auth error:', error);
-                        this.apiStatus = '❌ Ошибка авторизации';
-                    } finally {
-                        this.isLoading = false;
-                    }
-                },
-                
-                async fetchUserStats() {
-                    if (!this.userId) return;
-                    
-                    try {
-                        const response = await fetch(`${this.apiUrl}/user/stats?userId=${this.userId}`);
-                        this.userStats = await response.json();
-                    } catch (error) {
-                        console.error('Error fetching stats:', error);
-                    }
-                },
-                
                 async fetchTasks() {
-                    if (!this.userId) return;
-                    
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`);
+                        const response = await fetch(`/api/tasks?userId=${this.userId}`);
                         this.tasks = await response.json();
                     } catch (error) {
-                        console.error('Error fetching tasks:', error);
+                        console.error('Error:', error);
+                    } finally {
+                        this.loading = false;
                     }
                 },
                 
                 async addTask() {
-                    if (!this.newTask.trim() || !this.userId) return;
+                    if (!this.newTask.trim()) return;
                     
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`, {
+                        const response = await fetch('/api/tasks', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ 
                                 task: this.newTask.trim(),
                                 userId: this.userId 
@@ -128,205 +59,81 @@
                         
                         if (response.ok) {
                             this.newTask = '';
-                            await this.fetchTasks();
-                            await this.fetchUserStats();
+                            this.fetchTasks();
                         }
                     } catch (error) {
-                        console.error('Error adding task:', error);
+                        console.error('Error:', error);
                     }
                 },
                 
                 async deleteTask(task) {
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
-                            method: 'DELETE',
-                        });
-                        
-                        if (response.ok) {
-                            await this.fetchTasks();
-                            await this.fetchUserStats();
-                        }
+                        await fetch(`/api/tasks/${task._id}`, { method: 'DELETE' });
+                        this.fetchTasks();
                     } catch (error) {
-                        console.error('Error deleting task:', error);
+                        console.error('Error:', error);
                     }
                 },
                 
                 async toggleTask(task) {
                     try {
-                        const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
+                        await fetch(`/api/tasks/${task._id}`, {
                             method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ completed: !task.completed }),
                         });
-                        
-                        if (response.ok) {
-                            await this.fetchTasks();
-                            await this.fetchUserStats();
-                        }
+                        this.fetchTasks();
                     } catch (error) {
-                        console.error('Error updating task:', error);
+                        console.error('Error:', error);
                     }
-                },
-                
-                formatDate(dateString) {
-                    return new Date(dateString).toLocaleDateString('ru-RU', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
                 }
             },
             template: `
-                <div class="container-height flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
-                    <!-- Хедер - фиксированный -->
-                    <div class="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200 p-4">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-tasks text-white text-lg"></i>
+                <div class="min-h-screen p-4 max-w-md mx-auto">
+                    <!-- Header -->
+                    <div class="bg-white rounded-lg shadow p-4 mb-4">
+                        <h1 class="text-2xl font-bold text-gray-800">My Todo List</h1>
+                        <p class="text-gray-600" v-if="userId">User ID: {{ userId }}</p>
+                        <p class="text-gray-600" v-else>No user specified</p>
+                    </div>
+
+                    <!-- Tasks List -->
+                    <div class="space-y-3 mb-4">
+                        <div v-if="loading" class="text-center py-8">
+                            <div class="text-gray-500">Loading...</div>
+                        </div>
+
+                        <div v-else-if="tasks.length === 0" class="text-center py-8 bg-white rounded-lg shadow">
+                            <div class="text-gray-500">No tasks yet</div>
+                        </div>
+
+                        <div v-else v-for="task in tasks" :key="task._id" 
+                             class="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <input type="checkbox" :checked="task.completed" 
+                                       @change="toggleTask(task)"
+                                       class="w-5 h-5">
+                                <span :class="{'line-through text-gray-500': task.completed}">
+                                    {{ task.task }}
+                                </span>
                             </div>
-                            <div class="flex-1 min-w-0">
-                                <h1 class="text-xl font-bold text-gray-800 truncate">Мой Todo List</h1>
-                                <p class="text-gray-600 text-xs">ID: {{ userId }}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Статистика - фиксированная -->
-                    <div class="flex-shrink-0 grid grid-cols-3 gap-2 p-4 bg-white/80 backdrop-blur-sm border-b border-gray-200">
-                        <div class="text-center">
-                            <div class="text-lg font-bold text-blue-600">{{ userStats.totalTasks }}</div>
-                            <div class="text-gray-600 text-xs">Всего</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-lg font-bold text-green-600">{{ userStats.completedTasks }}</div>
-                            <div class="text-gray-600 text-xs">Готово</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-lg font-bold text-orange-600">{{ userStats.pendingTasks }}</div>
-                            <div class="text-gray-600 text-xs">В работе</div>
-                        </div>
-                    </div>
-
-                    <!-- Прогресс бар -->
-                    <div v-if="userStats.totalTasks > 0" class="flex-shrink-0 bg-white/60 backdrop-blur-sm border-b border-gray-200 p-3">
-                        <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
-                            <span>Прогресс выполнения</span>
-                            <span>{{ completionPercentage }}%</span>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-green-500 h-2 rounded-full transition-all duration-500" 
-                                 :style="{ width: completionPercentage + '%' }"></div>
-                        </div>
-                    </div>
-
-                    <!-- Список задач - скроллируемый -->
-                    <div class="flex-1 overflow-y-auto p-4 space-y-3">
-                        <!-- Задачи -->
-                        <div 
-                            v-for="task in tasks" 
-                            :key="task._id"
-                            class="group bg-white/90 backdrop-blur-sm rounded-xl p-4 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:border-blue-200"
-                            :class="task.completed ? 'opacity-75' : ''"
-                        >
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-3 flex-1">
-                                    <button 
-                                        @click="toggleTask(task)"
-                                        class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110 flex-shrink-0"
-                                        :class="task.completed 
-                                            ? 'bg-green-500 border-green-500 text-white' 
-                                            : 'border-gray-300 hover:border-green-400 text-transparent'"
-                                    >
-                                        <i class="fas fa-check text-xs"></i>
-                                    </button>
-                                    
-                                    <div class="flex-1 min-w-0">
-                                        <p 
-                                            class="text-gray-800 font-medium break-words"
-                                            :class="task.completed ? 'line-through text-gray-500' : ''"
-                                        >
-                                            {{ task.task }}
-                                        </p>
-                                        <div class="flex items-center space-x-2 mt-1">
-                                            <span class="text-xs text-gray-500">
-                                                {{ formatDate(task.createdAt) }}
-                                            </span>
-                                            <span 
-                                                v-if="task.username"
-                                                class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full"
-                                            >
-                                                @{{ task.username }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <button 
-                                    @click="deleteTask(task)"
-                                    class="w-7 h-7 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-300 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2"
-                                >
-                                    <i class="fas fa-trash text-sm"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Пустое состояние -->
-                        <div 
-                            v-if="tasks.length === 0 && !isLoading"
-                            class="bg-white/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-lg border-2 border-dashed border-gray-300"
-                        >
-                            <i class="fas fa-inbox text-3xl text-gray-400 mb-3"></i>
-                            <p class="text-gray-500 text-sm mb-1">Ваш список задач пуст</p>
-                            <p class="text-gray-400 text-xs">
-                                Добавьте первую задачу через форму ниже
-                            </p>
-                        </div>
-
-                        <!-- Загрузка -->
-                        <div 
-                            v-if="isLoading"
-                            class="bg-white/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-lg"
-                        >
-                            <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-3"></i>
-                            <p class="text-gray-500 text-sm">Загрузка ваших задач...</p>
-                        </div>
-                    </div>
-
-                    <!-- Форма добавления - ФИКСИРОВАННАЯ ВНИЗУ -->
-                    <div class="flex-shrink-0 bg-white border-t border-gray-200 p-4 safe-area-inset-bottom">
-                        <div class="space-y-3">
-                            <!-- Поле ввода -->
-                            <input 
-                                v-model="newTask"
-                                @keyup.enter="addTask"
-                                type="text" 
-                                placeholder="Новая задача..."
-                                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 text-base"
-                                :disabled="!userId"
-                            >
-                            <!-- Кнопка - ОТДЕЛЬНО ПОД ИНПУТОМ -->
-                            <button 
-                                @click="addTask"
-                                :disabled="!newTask.trim() || !userId"
-                                class="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 text-base"
-                            >
-                                <i class="fas fa-plus"></i>
-                                <span>Добавить задачу</span>
+                            <button @click="deleteTask(task)" class="text-red-500 hover:text-red-700">
+                                ×
                             </button>
                         </div>
-                        
-                        <!-- Статус -->
-                        <div class="text-center mt-3">
-                            <p class="text-gray-500 text-xs">
-                                {{ apiStatus }}
-                                <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 ml-1">
-                                    <i class="fas fa-refresh"></i>
-                                </button>
-                            </p>
-                        </div>
+                    </div>
+
+                    <!-- Add Task Form -->
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <input v-model="newTask" @keyup.enter="addTask"
+                               placeholder="New task..." 
+                               class="w-full p-3 border rounded-lg mb-3"
+                               :disabled="!userId">
+                        <button @click="addTask" 
+                                :disabled="!newTask.trim() || !userId"
+                                class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 disabled:opacity-50">
+                            Add Task
+                        </button>
                     </div>
                 </div>
             `
