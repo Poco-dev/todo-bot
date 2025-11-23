@@ -240,8 +240,8 @@ app.get("/test", (req, res) => {
 // РАЗДАЕМ СТАТИЧЕСКИЕ ФАЙЛЫ ИЗ ПАПКИ to-do
 app.use(express.static(path.join(__dirname, "to-do")));
 
-// Все остальные GET запросы отправляем на index.html
-app.get("/*", (req, res) => {
+// ИСПРАВЛЕННЫЙ КОД - используем регулярное выражение вместо "/*"
+app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "to-do", "index.html"));
 });
 
