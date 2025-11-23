@@ -155,7 +155,7 @@ app.get("/api/status", (req, res) => {
 app.use(express.static(path.join(__dirname, "to-do")));
 
 // Все остальные запросы
-app.get("*", (req, res) => {
+app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "to-do", "index.html"));
 });
 
