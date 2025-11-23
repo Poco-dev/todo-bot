@@ -125,53 +125,54 @@ bot.on("text", async (ctx) => {
 bot.command("mytasks", async (ctx) => {
   try {
     const userId = ctx.from.id;
+    console.log(`📋 Processing /mytasks for user ${userId}`);
+    
     const tasks = await Task.find({ userId }).sort({ createdAt: -1 }).limit(10);
     
     if (tasks.length === 0) {
-      return ctx.reply("📭 Ваш список задач пуст");
+      return ctx.reply("📭 Ваш список задач пуст\n\nДобавьте задачу просто написав ее в чат!");
     }
 
-    let message = '📋 Ваши задачи:\n\n';
+    let message = '📋 Ваши последние задачи:\n\n';
     tasks.forEach((task, index) => {
       const status = task.completed ? '✅' : '⏳';
-      message += `${index + 1}. ${status} ${task.task}\n`;
+      const date = new Date(task.createdAt).toLocaleDateString('ru-RU');
+      message += `${index + 1}. ${status} ${task.task}\n   📅 ${date}\n\n`;
     });
 
-    message += `\nВсего задач: ${tasks.length}`;
+    const completedCount = await Task.countDocuments({ userId, completed: true });
+    const totalCount = await Task.countDocuments({ userId });
     
-    const personalUrl = `${WEB_APP_URL}?userId=${userId}`;
+    message += `📊 Статистика: ${completedCount}/${totalCount} выполнено`;
     
-    ctx.reply(message, {
+    const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${ctx.from.username || ctx.from.first_name}`;
+    
+    await ctx.reply(message, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "📋 Открыть полный список", web_app: { url: personalUrl } }]
+          [{ text: "📋 Открыть полный список", web_app: { url: personalUrl } }],
+          [{ text: "➕ Добавить задачу", web_app: { url: personalUrl } }]
         ]
       }
     });
+    
   } catch (error) {
-    console.error(error);
+    console.error("Error in /mytasks:", error);
     ctx.reply("❌ Ошибка при получении задач");
   }
 });
 
 // Команда /stats
-bot.command("stats", async (ctx) => {
-  try {
-    const userId = ctx.from.id;
-    const totalTasks = await Task.countDocuments({ userId });
-    const completedTasks = await Task.countDocuments({ userId, completed: true });
-    const pendingTasks = totalTasks - completedTasks;
-
-    const message = `📊 Ваша статистика:\n\n` +
-      `📝 Всего задач: ${totalTasks}\n` +
-      `✅ Выполнено: ${completedTasks}\n` +
-      `⏳ В процессе: ${pendingTasks}`;
-
-    ctx.reply(message);
-  } catch (error) {
-    console.error(error);
-    ctx.reply("❌ Ошибка при получении статистики");
-  }
+// Команда /help
+bot.command("help", (ctx) => {
+  const helpMessage = `🤖 Доступные команды:\n\n` +
+    `/start - Начать работу с ботом\n` +
+    `/mytasks - Показать мои задачи\n` +
+    `/stats - Моя статистика\n` +
+    `/help - Показать это сообщение\n\n` +
+    `💡 Также вы можете просто написать задачу в чат, чтобы добавить ее!`;
+  
+  ctx.reply(helpMessage);
 });
 
 // Обработка ошибок бота
