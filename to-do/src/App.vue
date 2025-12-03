@@ -20,13 +20,12 @@
                     tasks: [],
                     newTask: '',
                     apiStatus: 'Загрузка...',
-                    apiUrl: '/api' // Относительный путь, т.к. на том же домене
+                    apiUrl: '/api'
                 }
             },
             async mounted() {
                 await this.checkStatus();
                 await this.fetchTasks();
-                // Авто-обновление каждые 5 секунд
                 setInterval(this.fetchTasks, 5000);
             },
             computed: {
@@ -50,7 +49,7 @@
                         this.apiStatus = '❌ Ошибка подключения';
                     }
                 },
-                
+
                 async fetchTasks() {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks`);
@@ -59,10 +58,10 @@
                         console.error('Error fetching tasks:', error);
                     }
                 },
-                
+
                 async addTask() {
                     if (!this.newTask.trim()) return;
-                    
+
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks`, {
                             method: 'POST',
@@ -71,7 +70,7 @@
                             },
                             body: JSON.stringify({ task: this.newTask.trim() }),
                         });
-                        
+
                         if (response.ok) {
                             this.newTask = '';
                             await this.fetchTasks();
@@ -80,13 +79,13 @@
                         console.error('Error adding task:', error);
                     }
                 },
-                
+
                 async deleteTask(task) {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks/${task._id}`, {
                             method: 'DELETE',
                         });
-                        
+
                         if (response.ok) {
                             await this.fetchTasks();
                         }
@@ -94,7 +93,7 @@
                         console.error('Error deleting task:', error);
                     }
                 },
-                
+
                 async toggleTask(task) {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks/${task._id}`, {
@@ -104,7 +103,7 @@
                             },
                             body: JSON.stringify({ completed: !task.completed }),
                         });
-                        
+
                         if (response.ok) {
                             await this.fetchTasks();
                         }
@@ -112,7 +111,7 @@
                         console.error('Error updating task:', error);
                     }
                 },
-                
+
                 formatDate(dateString) {
                     return new Date(dateString).toLocaleDateString('ru-RU', {
                         day: 'numeric',
@@ -156,26 +155,26 @@
                     <!-- Список задач -->
                     <div class="max-w-2xl mx-auto space-y-3">
                         <!-- Задачи -->
-                        <div 
-                            v-for="task in tasks" 
+                        <div
+                            v-for="task in tasks"
                             :key="task._id"
                             class="group bg-white/90 backdrop-blur-sm rounded-xl p-4 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/20 hover:border-blue-200"
                             :class="task.completed ? 'opacity-75' : ''"
                         >
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-4 flex-1">
-                                    <button 
+                                    <button
                                         @click="toggleTask(task)"
                                         class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110"
-                                        :class="task.completed 
-                                            ? 'bg-green-500 border-green-500 text-white' 
+                                        :class="task.completed
+                                            ? 'bg-green-500 border-green-500 text-white'
                                             : 'border-gray-300 hover:border-green-400 text-transparent'"
                                     >
                                         <i class="fas fa-check text-xs"></i>
                                     </button>
-                                    
+
                                     <div class="flex-1 min-w-0">
-                                        <p 
+                                        <p
                                             class="text-gray-800 font-medium truncate"
                                             :class="task.completed ? 'line-through text-gray-500' : ''"
                                         >
@@ -185,7 +184,7 @@
                                             <span class="text-xs text-gray-500">
                                                 {{ formatDate(task.createdAt) }}
                                             </span>
-                                            <span 
+                                            <span
                                                 v-if="task.username"
                                                 class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full"
                                             >
@@ -194,8 +193,8 @@
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <button 
+
+                                <button
                                     @click="deleteTask(task)"
                                     class="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all duration-300 opacity-0 group-hover:opacity-100"
                                 >
@@ -205,7 +204,7 @@
                         </div>
 
                         <!-- Пустое состояние -->
-                        <div 
+                        <div
                             v-if="tasks.length === 0"
                             class="bg-white/90 backdrop-blur-sm rounded-xl p-12 text-center shadow-lg border-2 border-dashed border-gray-300"
                         >
@@ -219,13 +218,13 @@
                         <!-- Форма добавления -->
                         <div class="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-white/20">
                             <div class="flex space-x-3">
-                                <input 
+                                <input
                                     v-model="newTask"
                                     @keyup.enter="addTask"
                                     placeholder="Добавить новую задачу..."
                                     class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
                                 >
-                                <button 
+                                <button
                                     @click="addTask"
                                     :disabled="!newTask.trim()"
                                     class="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
@@ -239,7 +238,7 @@
                         <!-- Статус -->
                         <div class="text-center">
                             <p class="text-gray-500 text-sm">
-                                Статус: {{ apiStatus }} 
+                                Статус: {{ apiStatus }}
                                 <button @click="fetchTasks" class="text-blue-500 hover:text-blue-700 ml-2">
                                     <i class="fas fa-refresh"></i>
                                 </button>

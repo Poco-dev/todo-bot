@@ -7,8 +7,6 @@ const path = require("path");
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// Переменные окружения
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -19,8 +17,6 @@ console.log('📍 Environment:', process.env.NODE_ENV || 'development');
 console.log('🔗 MongoDB:', MONGODB_URI ? '✅ Configured' : '❌ Missing');
 console.log('🤖 Bot Token:', BOT_TOKEN ? '✅ Configured' : '❌ Missing');
 console.log('🌐 Web URL:', WEB_APP_URL);
-
-// Проверка переменных
 if (!BOT_TOKEN) {
   console.error("❌ BOT_TOKEN not set!");
   process.exit(1);
@@ -30,16 +26,12 @@ if (!MONGODB_URI) {
   console.error("❌ MONGODB_URI not set!");
   process.exit(1);
 }
-
-// Подключение к MongoDB
 mongoose.connect(MONGODB_URI)
   .then(() => console.log("✅ MongoDB connected successfully"))
   .catch(err => {
     console.error("❌ MongoDB connection error:", err.message);
     process.exit(1);
   });
-
-// Схема задачи
 const taskSchema = new mongoose.Schema({
   task: String,
   completed: { type: Boolean, default: false },
@@ -50,8 +42,6 @@ const taskSchema = new mongoose.Schema({
 });
 
 const Task = mongoose.model("Task", taskSchema);
-
-// Схема пользователей
 const userSessionSchema = new mongoose.Schema({
   userId: { type: Number, required: true, unique: true },
   username: String,
@@ -64,30 +54,25 @@ const UserSession = mongoose.model("UserSession", userSessionSchema);
 
 // Бот
 const bot = new Telegraf(BOT_TOKEN);
-
-// В команде /start и везде где создается personalUrl
 bot.start((ctx) => {
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name;
-  
-  // Используем прямой путь без параметров кеширования
   const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${encodeURIComponent(username)}&r=${Date.now()}`;
-  
+
   ctx.reply(`📝 Добро пожаловать, ${username}!`, {
     reply_markup: {
       inline_keyboard: [
-        [{ 
-          text: "📋 Открыть Мой Todo List", 
-          web_app: { 
-            url: personalUrl 
-          } 
+        [{
+          text: "📋 Открыть Мой Todo List",
+          web_app: {
+            url: personalUrl
+          }
         }]
       ]
     }
   });
 });
 
-// В обработке сообщений тоже обнови URL
 bot.on("text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
@@ -102,15 +87,15 @@ bot.on("text", async (ctx) => {
 
     const username = ctx.from.username || ctx.from.first_name;
     const personalUrl = `${WEB_APP_URL}?userId=${ctx.from.id}&username=${encodeURIComponent(username)}&tgWebAppPlatform=tdesktop&tgWebAppVersion=7.0&tgWebAppThemeParams=%7B%7D`;
-    
+
     ctx.reply(`✅ Задача добавлена, ${username}!`, {
       reply_markup: {
         inline_keyboard: [
-          [{ 
-            text: "📋 Открыть Мой Todo List", 
-            web_app: { 
-              url: personalUrl 
-            } 
+          [{
+            text: "📋 Открыть Мой Todo List",
+            web_app: {
+              url: personalUrl
+            }
           }]
         ]
       }
@@ -121,14 +106,13 @@ bot.on("text", async (ctx) => {
   }
 });
 
-// Команда /mytasks
 bot.command("mytasks", async (ctx) => {
   try {
     const userId = ctx.from.id;
     console.log(`📋 Processing /mytasks for user ${userId}`);
-    
+
     const tasks = await Task.find({ userId }).sort({ createdAt: -1 }).limit(10);
-    
+
     if (tasks.length === 0) {
       return ctx.reply("📭 Ваш список задач пуст\n\nДобавьте задачу просто написав ее в чат!");
     }
@@ -142,11 +126,11 @@ bot.command("mytasks", async (ctx) => {
 
     const completedCount = await Task.countDocuments({ userId, completed: true });
     const totalCount = await Task.countDocuments({ userId });
-    
+
     message += `📊 Статистика: ${completedCount}/${totalCount} выполнено`;
-    
+
     const personalUrl = `${WEB_APP_URL}?userId=${userId}&username=${ctx.from.username || ctx.from.first_name}`;
-    
+
     await ctx.reply(message, {
       reply_markup: {
         inline_keyboard: [
@@ -155,15 +139,13 @@ bot.command("mytasks", async (ctx) => {
         ]
       }
     });
-    
+
   } catch (error) {
     console.error("Error in /mytasks:", error);
     ctx.reply("❌ Ошибка при получении задач");
   }
 });
 
-// Команда /stats
-// Команда /help
 bot.command("help", (ctx) => {
   const helpMessage = `🤖 Доступные команды:\n\n` +
     `/start - Начать работу с ботом\n` +
@@ -171,16 +153,14 @@ bot.command("help", (ctx) => {
     `/stats - Моя статистика\n` +
     `/help - Показать это сообщение\n\n` +
     `💡 Также вы можете просто написать задачу в чат, чтобы добавить ее!`;
-  
+
   ctx.reply(helpMessage);
 });
 
-// Обработка ошибок бота
 bot.catch((err, ctx) => {
   console.error(`❌ Ошибка бота для ${ctx.updateType}:`, err);
 });
 
-// API endpoints
 app.get("/api/tasks", async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -198,10 +178,10 @@ app.post("/api/tasks", async (req, res) => {
     const { task, userId, username } = req.body;
     if (!userId) return res.status(400).json({ error: "userId required" });
 
-    const newTask = new Task({ 
-      task, 
+    const newTask = new Task({
+      task,
       userId,
-      username: username || "user" // Сохраняем username
+      username: username || "user"
     });
     await newTask.save();
     res.json(newTask);
@@ -248,16 +228,14 @@ app.get("/api/user/stats", async (req, res) => {
   }
 });
 
-// Health check
 app.get("/api/status", (req, res) => {
-  res.json({ 
-    status: "OK", 
+  res.json({
+    status: "OK",
     database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
     timestamp: new Date().toISOString()
   });
 });
 
-// Отключаем кеширование для HTML файлов
 app.use("/", (req, res, next) => {
   if (req.path.endsWith('.html') || req.path === '/') {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -267,20 +245,17 @@ app.use("/", (req, res, next) => {
   next();
 });
 
-// Статические файлы из папки to-do
 app.use(express.static(path.join(__dirname, "to-do"), {
-  etag: false, // Отключаем ETag
-  lastModified: false, // Отключаем Last-Modified
-  cacheControl: false // Отключаем Cache-Control по умолчанию
+  etag: false,
+  lastModified: false,
+  cacheControl: false
 }));
 
-// Все остальные запросы отправляем в index.html
 app.get("/", (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, "to-do", "index.html"));
 });
 
-// Запуск сервера
 app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50));
   console.log('🚀 APPLICATION STARTED SUCCESSFULLY');
@@ -291,13 +266,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(50));
 });
 
-// Запуск бота
 bot.launch().then(() => {
   console.log("🤖 Bot started successfully");
 }).catch(error => {
   console.error("❌ Bot error:", error);
 });
 
-// Graceful shutdown
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

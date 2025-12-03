@@ -16,30 +16,29 @@
             height: 100%;
             overflow: hidden;
         }
-        
+
         #app {
             height: 100%;
         }
-        
+
         .full-height {
             height: 100vh;
             height: 100dvh;
         }
-        
+
         body.telegram-webapp {
             -webkit-overflow-scrolling: touch;
             overflow: hidden;
         }
-        
+
         input, textarea, select {
             font-size: 16px !important;
         }
-        
+
         .safe-area-inset-bottom {
             padding-bottom: env(safe-area-inset-bottom);
         }
-        
-        /* Анимации */
+
         .task-enter-active {
             transition: all 0.3s ease;
         }
@@ -82,22 +81,13 @@
                 }
             },
             async mounted() {
-                // Проверяем если мы в Telegram Web App
                 if (window.Telegram && Telegram.WebApp) {
                     this.isTelegramWebApp = true;
                     console.log('📱 Telegram Web App detected');
-                    
-                    // Расширяем на весь экран
                     Telegram.WebApp.expand();
-                    
-                    // Отключаем перетаскивание для закрытия
                     Telegram.WebApp.disableVerticalSwipes();
-                    
-                    // Устанавливаем тему
                     Telegram.WebApp.setHeaderColor('#ffffff');
                     Telegram.WebApp.setBackgroundColor('#f8fafc');
-                    
-                    // Получаем данные пользователя из Telegram
                     const user = Telegram.WebApp.initDataUnsafe.user;
                     if (user) {
                         this.userId = user.id;
@@ -106,12 +96,11 @@
                     }
                 } else {
                     console.log('🌐 Regular browser mode');
-                    // Если не в Web App, берем из URL параметров
                     const urlParams = new URLSearchParams(window.location.search);
                     this.userId = urlParams.get('userId');
                     this.userName = urlParams.get('username') || 'Пользователь';
                 }
-                
+
                 if (this.userId) {
                     await this.authenticateUser();
                     await this.fetchUserStats();
@@ -130,11 +119,9 @@
                 },
                 sortedTasks() {
                     return [...this.tasks].sort((a, b) => {
-                        // Сначала невыполненные, потом выполненные
                         if (a.completed !== b.completed) {
                             return a.completed ? 1 : -1;
                         }
-                        // По дате создания (новые сверху)
                         return new Date(b.createdAt) - new Date(a.createdAt);
                     });
                 }
@@ -144,10 +131,9 @@
                     try {
                         const response = await fetch(`${this.apiUrl}/user?userId=${this.userId}`);
                         const userData = await response.json();
-                        
+
                         if (userData.authenticated) {
                             this.apiStatus = '✅ Авторизован';
-                            // Используем имя из Telegram или из базы данных
                             if (userData.firstName) {
                                 this.userName = userData.firstName;
                             }
@@ -159,10 +145,10 @@
                         this.isLoading = false;
                     }
                 },
-                
+
                 async fetchUserStats() {
                     if (!this.userId) return;
-                    
+
                     try {
                         const response = await fetch(`${this.apiUrl}/user/stats?userId=${this.userId}`);
                         this.userStats = await response.json();
@@ -170,10 +156,10 @@
                         console.error('Error fetching stats:', error);
                     }
                 },
-                
+
                 async fetchTasks() {
                     if (!this.userId) return;
-                    
+
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`);
                         this.tasks = await response.json();
@@ -181,24 +167,24 @@
                         console.error('Error fetching tasks:', error);
                     }
                 },
-                
+
                 async addTask() {
                     if (!this.newTask.trim() || !this.userId) return;
-                    
+
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks?userId=${this.userId}`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({ 
+                            body: JSON.stringify({
                                 task: this.newTask.trim(),
                                 userId: this.userId,
                                 username: this.userName,
                                 firstName: this.userName
                             }),
                         });
-                        
+
                         if (response.ok) {
                             this.newTask = '';
                             await this.fetchTasks();
@@ -208,13 +194,13 @@
                         console.error('Error adding task:', error);
                     }
                 },
-                
+
                 async deleteTask(task) {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
                             method: 'DELETE',
                         });
-                        
+
                         if (response.ok) {
                             await this.fetchTasks();
                             await this.fetchUserStats();
@@ -223,7 +209,7 @@
                         console.error('Error deleting task:', error);
                     }
                 },
-                
+
                 async toggleTask(task) {
                     try {
                         const response = await fetch(`${this.apiUrl}/tasks/${task._id}?userId=${this.userId}`, {
@@ -233,7 +219,7 @@
                             },
                             body: JSON.stringify({ completed: !task.completed }),
                         });
-                        
+
                         if (response.ok) {
                             await this.fetchTasks();
                             await this.fetchUserStats();
@@ -242,7 +228,7 @@
                         console.error('Error updating task:', error);
                     }
                 },
-                
+
                 formatDate(dateString) {
                     return new Date(dateString).toLocaleDateString('ru-RU', {
                         day: 'numeric',
@@ -251,7 +237,7 @@
                         minute: '2-digit'
                     });
                 },
-                
+
                 getTaskStatus(task) {
                     return task.completed ? 'Выполнено' : 'В процессе';
                 }
@@ -294,7 +280,7 @@
                             <span class="font-bold">{{ completionPercentage }}%</span>
                         </div>
                         <div class="w-full bg-gray-200/80 rounded-full h-3 shadow-inner">
-                            <div class="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all duration-700 ease-out shadow-sm" 
+                            <div class="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all duration-700 ease-out shadow-sm"
                                  :style="{ width: completionPercentage + '%' }"></div>
                         </div>
                     </div>
@@ -303,8 +289,8 @@
                     <div class="flex-1 overflow-y-auto p-4 space-y-3">
                         <!-- Задачи с анимациями -->
                         <transition-group name="task" tag="div" class="space-y-3">
-                            <div 
-                                v-for="task in sortedTasks" 
+                            <div
+                                v-for="task in sortedTasks"
                                 :key="task._id"
                                 class="group bg-white/95 backdrop-blur-sm rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/40 hover:border-blue-200/50"
                                 :class="{
@@ -314,18 +300,18 @@
                             >
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center space-x-4 flex-1">
-                                        <button 
+                                        <button
                                             @click="toggleTask(task)"
                                             class="w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-300 hover:scale-110 flex-shrink-0 shadow-sm"
-                                            :class="task.completed 
-                                                ? 'bg-gradient-to-r from-green-400 to-green-500 border-green-500 text-white shadow-green-200' 
+                                            :class="task.completed
+                                                ? 'bg-gradient-to-r from-green-400 to-green-500 border-green-500 text-white shadow-green-200'
                                                 : 'border-gray-300 hover:border-green-400 text-transparent bg-white shadow-gray-200'"
                                         >
                                             <i class="fas fa-check text-xs"></i>
                                         </button>
-                                        
+
                                         <div class="flex-1 min-w-0">
-                                            <p 
+                                            <p
                                                 class="text-gray-800 font-semibold text-lg break-words leading-tight"
                                                 :class="task.completed ? 'line-through text-gray-500' : ''"
                                             >
@@ -337,16 +323,16 @@
                                                     {{ formatDate(task.createdAt) }}
                                                 </span>
                                                 <span class="text-xs px-2 py-1 rounded-full font-medium"
-                                                    :class="task.completed 
-                                                        ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800' 
+                                                    :class="task.completed
+                                                        ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800'
                                                         : 'bg-gradient-to-r from-orange-100 to-orange-200 text-orange-800'">
                                                     {{ getTaskStatus(task) }}
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    <button 
+
+                                    <button
                                         @click="deleteTask(task)"
                                         class="w-8 h-8 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-3 hover:scale-110"
                                     >
@@ -357,7 +343,7 @@
                         </transition-group>
 
                         <!-- Пустое состояние -->
-                        <div 
+                        <div
                             v-if="tasks.length === 0 && !isLoading"
                             class="bg-white/95 backdrop-blur-sm rounded-2xl p-8 text-center shadow-lg border-2 border-dashed border-gray-300/50"
                         >
@@ -371,7 +357,7 @@
                         </div>
 
                         <!-- Загрузка -->
-                        <div 
+                        <div
                             v-if="isLoading"
                             class="bg-white/95 backdrop-blur-sm rounded-2xl p-8 text-center shadow-lg border border-white/40"
                         >
@@ -387,10 +373,10 @@
                         <div class="space-y-3">
                             <!-- Поле ввода -->
                             <div class="relative">
-                                <input 
+                                <input
                                     v-model="newTask"
                                     @keyup.enter="addTask"
-                                    type="text" 
+                                    type="text"
                                     placeholder="Напишите новую задачу..."
                                     class="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg bg-white/80 backdrop-blur-sm"
                                     :disabled="!userId"
@@ -399,9 +385,9 @@
                                     <i class="fas fa-edit text-gray-400 text-lg"></i>
                                 </div>
                             </div>
-                            
+
                             <!-- Кнопка - ОТДЕЛЬНО ПОД ИНПУТОМ -->
-                            <button 
+                            <button
                                 @click="addTask"
                                 :disabled="!newTask.trim() || !userId"
                                 class="w-full px-5 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold text-lg rounded-2xl hover:shadow-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-3 shadow-lg"
